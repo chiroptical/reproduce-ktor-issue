@@ -1,13 +1,18 @@
 package app.shoebill.plugins
 
 import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.sessions.*
 import io.ktor.server.response.*
 import io.ktor.server.application.*
+import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
+import io.ktor.server.request.*
 import io.ktor.server.routing.*
+import kotlinx.serialization.Serializable
 
 fun Application.configureSecurity() {
+    @Serializable
     data class MySession(val displayName: String)
     install(Sessions) {
         cookie<MySession>("USER_SESSION") {
@@ -16,36 +21,32 @@ fun Application.configureSecurity() {
         }
     }
     install(CORS) {
-        allowMethod(HttpMethod.Options)
-        allowMethod(HttpMethod.Put)
-        allowMethod(HttpMethod.Get)
-        allowMethod(HttpMethod.Post)
-        allowMethod(HttpMethod.Delete)
-        allowMethod(HttpMethod.Patch)
-        allowHeader(HttpHeaders.AccessControlAllowHeaders)
-        allowHeader(HttpHeaders.AccessControlAllowMethods)
-        allowHeader(HttpHeaders.AccessControlAllowOrigin)
-        allowHeader(HttpHeaders.ContentType)
-        allowHeader("USER_SESSION")
-        exposeHeader("USER_SESSION")
-        allowHost("localhost:3000")
         allowCredentials = true
-        maxAgeInSeconds = 3600
+        allowHost("localhost:5173")
+        allowOrigins { when (it) {
+            "localhost:5173" -> true
+            else -> false
+        }}
+    }
+    install(ContentNegotiation) {
+        json()
     }
     routing {
         options("/session") {
             call.respond(HttpStatusCode.OK)
         }
+        post("/session") {
+            val formParameters = call.receiveParameters()
+            val displayName = formParameters["displayName"].toString()
+            call.sessions.set(MySession(displayName = displayName))
+            call.respondRedirect("http://localhost:5173")
+        }
         get("/session") {
             val userSession = call.sessions.get<MySession>()
             when (userSession) {
-                null -> call.respondText("Nope")
-                else -> call.respondText("Yup")
+                null -> call.respond(HttpStatusCode(405, "Not Permitted"))
+                else -> call.respond(userSession)
             }
-        }
-        post("/session") {
-            call.sessions.set(MySession(displayName = "derp"))
-            call.respondRedirect("http://localhost:3000/session")
         }
     }
 }
